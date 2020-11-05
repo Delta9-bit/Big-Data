@@ -34,13 +34,14 @@ x <- as.matrix(data[, - c(1,2)])
 
 stat.tests <- function(data){
   
+  var_non_stat <<- data[- 1,]
+  
   for(i in 1 : length(data)){
-    
+
     adf <- FALSE
     kpss <- FALSE
     q <- FALSE
     ar <- FALSE
-    var_non_stat <- data
     
     if(adf.test(data[, i])$p.value > 0.05){
       adf = TRUE
@@ -48,7 +49,7 @@ stat.tests <- function(data){
     if(kpss.test(data[, i])$p.value < 0.05){
       kpss = TRUE
     }
-    if(Box.test(data[, i], lag = 1, type = c("Ljung-Box")) < 0.05){
+    if(Box.test(data[, i], lag = 1, type = c("Ljung-Box"))$p.value < 0.05){
       q = TRUE
     }
     if(arima(x = y, order = c(1,0,0))[["coef"]][["ar1"]] > 0.7){
@@ -57,20 +58,10 @@ stat.tests <- function(data){
     
     if(adf & kpss | adf & q | adf & ar | kpss & ar | kpss & q | ar & q == TRUE){
       print(paste('variable :', names(data[i]), 'non-stationnaire'), sep = ' ')
-      var_non_stat[, i] <- diff(data[, i])
-      names(var_non_stat[i]) <- names(data[i])
+      var_non_stat[i] <<- diff(data[, i])
+      names(var_non_stat[i]) <<- names(data[, i])
     }
   }
-  
-  data <- data[- 1,]
-  
-  for(i in 1 : length(data)){
-    if(names(var_non_stat[i]) == names(data[i])){
-      data[, i] <- var_non_stat[, i]
-    }
-
-  } 
-
 }
 
 # Checking for stationarity
