@@ -8,6 +8,11 @@ library(doParallel)
 library(tseries)
 library(lmtest)
 library(ggplot2)
+library(rpart)
+library(randomForest)
+library(gbm)
+library(caret)
+library(partykit)
 
 setwd("/Users/Lucas/Desktop/Cours/Big Data")
 
@@ -21,13 +26,22 @@ corrplot(cor, method = "color")
 cor_comp <- cor(data[, 2 : 28], use = 'complete.obs', method = c("spearman"))
 corrplot(cor_comp, method = "color")
 
-y <- as.matrix(scale(data[, 2], center = T, scale = F))
+y <- as.matrix(scale(data[, 2], center = TRUE, scale = FALSE))
+y <- diff(y)
+
+data <- data[- 1, ]
+
+data$returns <- y
 
 ggplot(mapping = aes(x = date, y = Index), data)+
   geom_line(col = 'steelblue')+
   theme_minimal()
 
-x <- as.matrix(data[, - c(1,2)])
+ggplot(mapping = aes(x = date, y = returns), data)+
+  geom_line(col = 'steelblue')+
+  theme_minimal()
+
+x <- as.matrix(data[, - c(1,2, 29)])
 
 # Loop for stationarity tests
 
@@ -131,5 +145,64 @@ opt_En <- glmnet(x, y, lambda = best_lambda, standardize = T, alpha = best_param
 # Exctracting coeffs
 which(! coef(opt_ridge) == 0, arr.ind = TRUE)
 
+# Weighted fusion regression
 
+gamma = 0.5
+mu = 0.1
+cor <- cor(x)
+sign <- sign(cor) - diag(2, nrow(cor))
+weights <- (abs(cor)^gamma - 1 * (abs(cor) == 1)) / (1 - abs(cor) * (abs(cor) != 1))
+weights.vec <- apply(weights, 1 , sum)
+penalty <- -sign * (weights + diag(weights.vec))
+R <- chol(penalty, pivot = TRUE)
+p <- dim(x)[2]
+x_ <- rbind(x, sqrt(mu) * R)
+y_ <- c(y, rep(0, p))
+wfLASSO <- cv.glmnet(x_, y_)
+
+# Random forest
+
+px <- ncol(data) - 1
+valntree <- 2000
+valmtry <- floor(sqrt(px))
+valnodesize <- 1
+
+rdf <- randomForest(returns ~ ., data, ntree = valntree, mtry = valmtry,
+                    nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
+
+print(rdf)
+plot(rdf)
+
+tuneRF(x = data[, 1 : 28], y = data[, 29], mtryStart = 2, ntreeTry = 500,
+        stepFactor = 1, improve = 0.001, trace = TRUE, plot = TRUE)
+
+fit.control <- trainControl(method = 'repeatedcv', number = 5, repeats = 10,
+                            search = 'grid')
+
+tune.mtry <- expand.grid(.mtry = (1 : 10))
+
+rdf_grid <- train(returns ~ ., data = data, method = 'rf', metric = 'RMSE',
+                  tuneGrid = tune.mtry, trControl = fit.control)
+
+print(rdf_grid)
+plot(rdf_grid)
+
+px <- ncol(data) - 1
+valntree <- 2000
+valmtry <- floor(sqrt(px))
+valnodesize <- 1
+
+rdf <- randomForest(returns ~ ., data, ntree = valntree, mtry = valmtry,
+                    nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
+
+print(rdf_grid)
+plot(rdf_grid)
+
+importance(rdf, scale = TRUE)
+
+# GETS modelling 
+
+mX <- data.matrix(x)
+# ARX model
+ARX <- arx(data$returns, mc = TRUE, ar = 1,mxreg = mX, vcov.type = 'white')
 
