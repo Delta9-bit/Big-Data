@@ -21,7 +21,6 @@ corrplot(cor, method = "color")
 cor_comp <- cor(data[, 2 : 28], use = 'complete.obs', method = c("spearman"))
 corrplot(cor_comp, method = "color")
 
-
 y <- as.matrix(scale(data[, 2], center = T, scale = F))
 
 ggplot(mapping = aes(x = date, y = Index), data)+
@@ -36,7 +35,7 @@ stat.tests <- function(data){
   
   var_non_stat <<- data[- 1,]
   
-  for(i in 1 : length(data)){
+  for(i in 1 : ncol(data)){
 
     adf <- FALSE
     kpss <- FALSE
@@ -100,6 +99,23 @@ summary(opt_lasso)
 # Exctracting coeffs
 which(! coef(opt_lasso) == 0, arr.ind = TRUE)
 
+# Adaptive LASSO
+
+alasso <- glmnet(x, y, alpha = 1, lambda = best_lambda, standardize = T, nfolds = 10)
+coef_lasso <- predict(alasso, type = 'coef', s = best_lambda)
+# Weights computation
+gamma = 0.5
+w0 <- - 1 / (abs(coef_lasso) + (1 / length(y)))
+weights <- w0^gamma
+# Fit w/ weigths
+alasso <- cv.glmnet(x, y, alpha = 1, penalty.factors = weights, nfolds = 10)
+# Fit w/ weights & opt lambda
+plot(alasso)
+best_lambda <- alasso$lambda.min
+opt_alasso <- cv.glmnet(x, y, alpha = 1, lambda = best_lambda, penalty.factors = weights, nfolds = 10)
+# Exctracting coeffs
+which(! coef(opt_alasso) == 0, arr.ind = TRUE)
+
 # Elastic-Net regression
 
 a <- seq (0.001, 0.9, 0.01)
@@ -114,3 +130,6 @@ best_lambda <- best_params$lambda.1se
 opt_En <- glmnet(x, y, lambda = best_lambda, standardize = T, alpha = best_params$alpha)
 # Exctracting coeffs
 which(! coef(opt_ridge) == 0, arr.ind = TRUE)
+
+
+
