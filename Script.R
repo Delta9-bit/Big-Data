@@ -13,6 +13,9 @@ library(randomForest)
 library(gbm)
 library(caret)
 library(partykit)
+library(PerformanceAnalytics)
+library(FinTS)
+library(diveRsity)
 
 setwd("/Users/Lucas/Desktop/Cours/Big Data")
 
@@ -81,9 +84,48 @@ stat.tests <- function(data){
 
 stat.tests(data)
 
-# Differeinting once
+# Outliers detection
 
-y <- diff(y, lag = 1)
+data_clean = var_non_stat
+
+for (i in 1 : 28){
+  y=ts(var_non_stat[, i])
+  clean=Return.clean(y, method = "boudt")
+  clean=ts(clean)
+  data_clean[, i] <- clean
+  names(data_clean[i]) <- names(data[, i])
+}
+
+var_non_stat$num <- seq(1, 978, 1)
+data_clean$num <- seq(1, 978, 1)
+
+# Outliers plots
+
+for (i in 1 : 28){
+  print(ggplot(mapping = aes(x = num, y = var_non_stat[, i]), var_non_stat)+
+    geom_line(color = 'red')+
+    geom_line(aes(x = num, y = data_clean[, i]), data = data_clean, col = 'steelblue')+
+    theme_minimal()+
+    ggtitle(names(data_clean[i]))+
+    ylab(names(data_clean[i]))+
+    xlab('time'))
+}
+
+# Desc. Statistics
+
+data_clean <- data_clean[, -c(1, 2)]
+
+for(i in 1:28){
+  print(names(data_clean[i]))
+  print(FinTS.stats(data_clean[, i]))
+}
+ybreaks <- seq(0,50,5)
+
+ggplot(mapping = aes(x = returns), data_clean)+
+  geom_density(fill = 'steelblue')+
+  stat_function(fun = dnorm, args = list(mean = 2.5474, sd = 30.927), color = 'red')+
+  scale_x_continuous(limits = c(-100, 100))+
+  theme_minimal()
 
 # Ridge regression
 
