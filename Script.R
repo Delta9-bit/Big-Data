@@ -16,6 +16,7 @@ library(partykit)
 library(PerformanceAnalytics)
 library(FinTS)
 library(diveRsity)
+library(SIS)
 
 setwd("/Users/Lucas/Desktop/Cours/Big Data")
 
@@ -160,7 +161,7 @@ which(! coef(opt_lasso) == 0, arr.ind = TRUE)
 
 # Adaptive LASSO
 
-alasso <- glmnet(x, y, alpha = 1, lambda = best_lambda, standardize = T, nfolds = 10)
+alasso <- glmnet(x, y, alpha = 1, lambda = lambda, standardize = T, nfolds = 10)
 coef_lasso <- predict(alasso, type = 'coef', s = best_lambda)
 # Weights computation
 gamma = 0.5
@@ -171,7 +172,7 @@ alasso <- cv.glmnet(x, y, alpha = 1, penalty.factors = weights, nfolds = 10)
 # Fit w/ weights & opt lambda
 plot(alasso)
 best_lambda <- alasso$lambda.min
-opt_alasso <- cv.glmnet(x, y, alpha = 1, lambda = best_lambda, penalty.factors = weights, nfolds = 10)
+opt_alasso <- cv.glmnet(x, y, alpha = 1, lambda = lambda, penalty.factors = weights, nfolds = 10)
 # Exctracting coeffs
 which(! coef(opt_alasso) == 0, arr.ind = TRUE)
 
@@ -188,7 +189,7 @@ best_lambda <- best_params$lambda.1se
 # Fit w/ best lambda & alpha
 opt_En <- glmnet(x, y, lambda = best_lambda, standardize = T, alpha = best_params$alpha)
 # Exctracting coeffs
-which(! coef(opt_ridge) == 0, arr.ind = TRUE)
+which(! coef(opt_En) == 0, arr.ind = TRUE)
 
 # Weighted fusion regression
 
@@ -244,6 +245,18 @@ print(rdf_grid)
 plot(rdf_grid)
 
 importance(rdf, scale = TRUE)
+
+# Pre-screening for GETS modelling
+
+sis <- SIS(x, y, family = 'gaussian', penalty = 'lasso', tune = 'cv', nfolds = 10, nsis = 100, )
+indices <- sis$sis.ix0
+reg_indices <- sis$ix
+show(indices)
+show(reg_indices)
+
+# remove unused variables
+
+x <- x[, c(1, 6, 7, 17, 18, 19, 24)]
 
 # GETS modelling 
 
