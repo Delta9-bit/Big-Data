@@ -20,6 +20,7 @@ library(SIS)
 library(msaenet)
 library(ncvreg)
 library(rbridge)
+library(RRF)
 
 setwd("/Users/Lucas/Desktop/Cours/Big Data")
 
@@ -253,29 +254,46 @@ which(! coef(wfLASSO) == 0, arr.ind = TRUE)
 
 # Random forest
 
-fit.control <- trainControl(method = 'repeatedcv', number = 5, repeats = 10,
-                            search = 'grid')
+#fit.control <- trainControl(method = 'repeatedcv', number = 5, repeats = 10,
+#                            search = 'grid')
 
-tune.mtry <- expand.grid(.mtry = (10 : 25))
+#tune.mtry <- expand.grid(.mtry = (14 : 16))
 
-rdf_grid <- train(returns ~ ., data = data_clean[, 1 : 27], method = 'rf', metric = 'RMSE',
-                  tuneGrid = tune.mtry, trControl = fit.control)
+#rdf_grid <- train(returns ~ ., data = data_clean[, 1 : 27], method = 'rf', metric = 'RMSE',
+#                  tuneGrid = tune.mtry, trControl = fit.control)
 
-print(rdf_grid)
-plot(rdf_grid)
+##print(rdf_grid)
+#plot(rdf_grid)
+
+#varImportance <- varImp(rdf_grid)
+#plot(varImportance)
 
 px <- ncol(data) - 1
-valntree <- 2000
-valmtry <- floor(sqrt(px))
-valnodesize <- 1
+valntree <- 200
+valmtry <- 16
+valnodesize <- 20
 
-rdf <- randomForest(returns ~ ., data, ntree = valntree, mtry = valmtry,
+rdf <- randomForest(returns ~ ., data = data_clean[, 1 : 27], ntree = valntree, mtry = valmtry,
                     nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
 
-print(rdf_grid)
-plot(rdf_grid)
+tune_RF <- tuneRF(x, y, data = data_clean[, 1 : 27], ntreeTry = 100, mtryStart = 1, stepFactor = 2, improve = 0.05)
 
-importance(rdf, scale = TRUE)
+rdf <- randomForest(returns ~ ., data = data_clean[, 1 : 27], ntree = valntree, mtry = valmtry,
+                    nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
+
+print(rdf)
+plot(rdf, main = NULL)
+
+importance(rdf)
+
+RRF <- RRF(returns ~ ., data = data_clean[, 1 : 27], ntree = valntree, mtry = valmtry,
+     nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
+
+plot(RRF)
+varUsed(RRF)
+print(RRF)
+print(RRF$feaSet)
+importance(RRF)
 
 # Pre-screening for GETS modelling
 
