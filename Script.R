@@ -17,6 +17,9 @@ library(PerformanceAnalytics)
 library(FinTS)
 library(diveRsity)
 library(SIS)
+library(msaenet)
+library(ncvreg)
+library(rbridge)
 
 setwd("/Users/Lucas/Desktop/Cours/Big Data")
 
@@ -112,6 +115,7 @@ for(i in 1:28){
   print(names(data_clean[i]))
   print(FinTS.stats(data_clean[, i]))
 }
+
 ybreaks <- seq(0,50,5)
 
 ggplot(mapping = aes(x = returns), data_clean)+
@@ -146,6 +150,19 @@ summary(opt_ridge)
 # Exctracting coeffs
 which(! coef(opt_ridge) == 0, arr.ind = TRUE)
 
+# Bridge regression
+
+# Lambda opt with 10-folds CV
+bridge <- cv.bridge(x, y, q = 0.5, lambda = lambda, nfolds = 10)
+plot(ridge)
+best_lambda <- bridge$lambda.min
+print(best_lambda)
+# Fit w/ best lambda
+opt_bridge <- bridge(x, y, q = 0.5, lambda = best_lambda)
+summary(opt_bridge)
+# Exctracting coeffs
+opt_ridge$beta
+
 # lASSO regression
 
 # Lambda opt with 10-folds CV
@@ -155,7 +172,6 @@ best_lambda <- lasso$lambda.min
 print(best_lambda)
 # Fit w/ best lambda
 opt_lasso <- glmnet(x, y, alpha = 1, lambda = best_lambda, standardize = T)
-summary(opt_lasso)
 # Exctracting coeffs
 which(! coef(opt_lasso) == 0, arr.ind = TRUE)
 
@@ -191,6 +207,34 @@ opt_En <- glmnet(x, y, lambda = best_lambda, standardize = T, alpha = best_param
 # Exctracting coeffs
 which(! coef(opt_En) == 0, arr.ind = TRUE)
 
+# SCAD regression
+
+SCAD <- cv.ncvreg(x, y, nfolds=10, seed = (1000), returnY=FALSE, trace=FALSE, penalty = 'SCAD')
+plot(SCAD)
+best_lambda <- SCAD$lambda.min
+opt_SCAD <- ncvreg(x, y, lambda = best_lambda, alpha = 1, penalty = 'SCAD')
+which(! coef(opt_SCAD) == 0, arr.ind = TRUE)
+
+# Adaptive Elastic Net
+
+aEN <- aenet(x, y, family = "gaussian", init = "enet", alphas = a, tune = "cv", nfolds = 10, rule = 'lambda.min', seed = (1000))
+which(! coef(aEN) == 0, arr.ind = TRUE)
+
+# Adaptive SCAD
+
+aSCAD <- asnet(x, y, family = "gaussian", init = "snet", alphas = a, tune = "cv", nfolds = 10, seed = (1000))
+which(! coef(aSCAD) == 0, arr.ind = TRUE)
+
+# Multi Step Adaptive Elastic Net
+
+MSaEN <- msaenet(x, y, family = "gaussian", init = "enet", alphas = a, tune = "cv", nfolds = 10, nsteps = 10, seed = (1000))
+which(! coef(MSaEN) == 0, arr.ind = TRUE)
+
+# Multi Step Adaptive SCAD
+
+MSaSCAD <- msasnet(x, y, family = "gaussian", init = "snet", alphas = a, tune = "cv", nfolds = 10, nsteps = 10, seed = (1000))
+which(! coef(MSaSCAD) == 0, arr.ind = TRUE)
+
 # Weighted fusion regression
 
 gamma = 0.5
@@ -205,29 +249,16 @@ p <- dim(x)[2]
 x_ <- rbind(x, sqrt(mu) * R)
 y_ <- c(y, rep(0, p))
 wfLASSO <- cv.glmnet(x_, y_)
+which(! coef(wfLASSO) == 0, arr.ind = TRUE)
 
 # Random forest
-
-px <- ncol(data) - 1
-valntree <- 2000
-valmtry <- floor(sqrt(px))
-valnodesize <- 1
-
-rdf <- randomForest(returns ~ ., data, ntree = valntree, mtry = valmtry,
-                    nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
-
-print(rdf)
-plot(rdf)
-
-tuneRF(x = data[, 1 : 28], y = data[, 29], mtryStart = 2, ntreeTry = 500,
-        stepFactor = 1, improve = 0.001, trace = TRUE, plot = TRUE)
 
 fit.control <- trainControl(method = 'repeatedcv', number = 5, repeats = 10,
                             search = 'grid')
 
-tune.mtry <- expand.grid(.mtry = (1 : 10))
+tune.mtry <- expand.grid(.mtry = (10 : 25))
 
-rdf_grid <- train(returns ~ ., data = data, method = 'rf', metric = 'RMSE',
+rdf_grid <- train(returns ~ ., data = data_clean[, 1 : 27], method = 'rf', metric = 'RMSE',
                   tuneGrid = tune.mtry, trControl = fit.control)
 
 print(rdf_grid)
@@ -248,19 +279,20 @@ importance(rdf, scale = TRUE)
 
 # Pre-screening for GETS modelling
 
-sis <- SIS(x, y, family = 'gaussian', penalty = 'lasso', tune = 'cv', nfolds = 10, nsis = 100, )
+sis <- SIS(x, y, family = 'gaussian', penalty = 'lasso', tune = 'cv', nfolds = 10, nsis = 26)
 indices <- sis$sis.ix0
-reg_indices <- sis$ix
 show(indices)
-show(reg_indices)
 
 # remove unused variables
 
-x <- x[, c(1, 6, 7, 17, 18, 19, 24)]
+x <- x[, c(1, 2, 4, 5, 6, 7, 9, 10, 11, 15, 17, 18, 19, 23, 24, 25, 26)]
 
 # GETS modelling 
 
 mX <- data.matrix(x)
 # ARX model
 ARX <- arx(data_clean$returns, mc = TRUE, ar = 1,mxreg = mX, vcov.type = 'white')
+#GETS
+gets <-  getsm(ARX, arch.LjungB = NULL)
+gets
 
