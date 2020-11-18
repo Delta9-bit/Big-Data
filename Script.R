@@ -268,6 +268,9 @@ which(! coef(wfLASSO) == 0, arr.ind = TRUE)
 #varImportance <- varImp(rdf_grid)
 #plot(varImportance)
 
+x_RF <- data_clean[, - 1]
+y_RF <- data_clean[, 27]
+
 px <- ncol(data) - 1
 valntree <- 200
 valmtry <- 16
@@ -275,6 +278,8 @@ valnodesize <- 20
 
 rdf <- randomForest(returns ~ ., data = data_clean[, 1 : 27], ntree = valntree, mtry = valmtry,
                     nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
+
+plot(rdf, main = NULL)
 
 tune_RF <- tuneRF(x, y, data = data_clean[, 1 : 27], ntreeTry = 100, mtryStart = 1, stepFactor = 2, improve = 0.05)
 
@@ -284,16 +289,27 @@ rdf <- randomForest(returns ~ ., data = data_clean[, 1 : 27], ntree = valntree, 
 print(rdf)
 plot(rdf, main = NULL)
 
-importance(rdf)
-
 RRF <- RRF(returns ~ ., data = data_clean[, 1 : 27], ntree = valntree, mtry = valmtry,
      nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
 
-plot(RRF)
-varUsed(RRF)
 print(RRF)
-print(RRF$feaSet)
-importance(RRF)
+varImpPlot(RRF, type = 2, main = NULL)
+
+# RF on 12 most important variables
+
+x_RF <- data_clean[, c(18, 19, 6, 1, 2, 7, 24, 15, 17, 11, 4, 20)]
+y_RF <- data_clean[, 27]
+
+tune_RF <- tuneRF(x_RF, y_RF, ntreeTry = 100, mtryStart = 1, stepFactor = 2, improve = 0.05)
+
+valmtry <- 8
+
+select_rdf <- randomForest(returns ~ CRSP_SPvw + CRSP_SPvwx + E12 + D12 + D.P + b.m + dfr + ltr + svar + EP + lty,
+                           data = data_clean[, 1 : 27], ntree = valntree, mtry = valmtry,
+                    nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
+
+print(select_rdf)
+plot(select_rdf, main = NULL)
 
 # Pre-screening for GETS modelling
 
@@ -314,3 +330,32 @@ ARX <- arx(data_clean$returns, mc = TRUE, ar = 1,mxreg = mX, vcov.type = 'white'
 gets <-  getsm(ARX, arch.LjungB = NULL)
 gets
 
+# OLS with selected variables
+
+lag_y <- data_clean$returns
+lag_y <- lag_y[- 1]
+data_clean <- data_clean[- 978,]
+data_clean$lag <- lag_y
+
+LASSO_OLS <- lm(returns ~ . - dfy, data = data_clean)
+summary(LASSO_OLS)
+Ridge_OLS <- lm(returns ~ ., data = data_clean)
+summary(Ridge_OLS)
+EN_OLS <- lm(returns ~ D12 + D.P + E12 + b.m + svar + CRSP_SPvw + CRSP_SPvwx + IP + dfr + epu + lag, data = data_clean)
+summary(EN_OLS)
+SCAD_OLS <- lm(returns ~ D12 + D.P + E12 + b.m + infl + corpr + svar + CRSP_SPvw + IP + dfr + dfy + epu + lag, data = data_clean)
+summary(SCAD_OLS)
+aLASSO_OLS <- lm(returns ~ D12 + D.P + E12 + b.m + svar + CRSP_SPvw + CRSP_SPvwx + IP + dfr + lag, data = data_clean)
+summary(aLASSO_OLS)
+WF_OLS <- lm(returns ~ D12 + D.P + E12 + b.m + svar + CRSP_SPvw + CRSP_SPvwx + dfr + lag, data = data_clean)
+summary(WF_OLS)
+aEN_OLS <- lm(returns ~ D12 + D.P + E12 + b.m + Rfree + corpr + svar + CRSP_SPvw + IP + dfr + dfy + epu + lag, data = data_clean)
+summary(aEN_OLS)
+aSCAD_OLS <- lm(returns ~ D12 + D.P + E12 + b.m + Rfree + corpr + IP + dfr + epu + lag, data = data_clean)
+summary(aSCAD_OLS)
+msaEN_OLS <- lm(returns ~ D12 + D.P + E12 + b.m + Rfree + corpr + CRSP_SPvw + CRSP_SPvwx + IP + dfr + epu + lag, data = data_clean)
+summary(msaEN_OLS)
+msaSCAD_OLS <- lm(returns ~ D12 + D.P + E12 + b.m + CRSP_SPvw + IP + dfr + epu + lag, data = data_clean)
+summary(msaSCAD_OLS)
+RF_OLS <- lm(returns ~ D12 + D.P + E12 + b.m + ltr + lty + svar + CRSP_SPvw + CRSP_SPvwx + IP + dfr + lag, data = data_clean)
+summary(RF_OLS)
