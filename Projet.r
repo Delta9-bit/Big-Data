@@ -269,66 +269,58 @@ y_ <- c(y, rep(0, p))
 wfLASSO <- cv.glmnet(x_, y_)
 which(! coef(wfLASSO) == 0, arr.ind = TRUE)
 
-# Random forest
-
-#fit.control <- trainControl(method = 'repeatedcv', number = 5, repeats = 10,
-#                            search = 'grid')
-
-#tune.mtry <- expand.grid(.mtry = (14 : 16))
-
-#rdf_grid <- train(returns ~ ., data = data_clean[, 1 : 27], method = 'rf', metric = 'RMSE',
-#                  tuneGrid = tune.mtry, trControl = fit.control)
-
-##print(rdf_grid)
-#plot(rdf_grid)
-
-#varImportance <- varImp(rdf_grid)
-#plot(varImportance)
-
-#, - c(2, 18, 19, 27, 28)]
-x_RF <- data_clean[, - c(2, 18, 19, 27, 28)]
-y_RF <- data_clean[, 27]
-
+# Random Forest All variables
 px <- ncol(data) - 1
-valntree <- 200
+valntree <- 1000
+valmtry <- 4
+valnodesize <- 5
+
+rdf <- randomForest(returns ~ ., data = data_clean[,-c(2, 4, 18, 19, 28)], ntree = valntree, mtry = valmtry,
+                    nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
+
+plot(rdf, main = NULL)
+
+tune_RF <- tuneRF(x, y, data = data_clean[,-c(2, 4, 18, 19, 28)], ntreeTry = 300, mtryStart = 1, stepFactor = 2, improve = 0.05)
+
+valntree <- 300
 valmtry <- 16
-valnodesize <- 20
 
-rdf <- randomForest(returns ~ ., data = data_clean[,- c(2, 18, 19, 28)], ntree = valntree, mtry = valmtry,
+rdf <- randomForest(returns ~ ., data = data_clean[,-c(2, 4, 18, 19, 28)], ntree = valntree, mtry = valmtry,
                     nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
 
 plot(rdf, main = NULL)
 
-tune_RF <- tuneRF(x_RF, y_RF, data = data_clean[,-c(2, 18, 19, 28)], ntreeTry = 100, mtryStart = 1, stepFactor = 2, improve = 0.05)
-
-rdf <- randomForest(returns ~ ., data = data_clean[, -c(2, 18, 19, 28)], ntree = valntree, mtry = valmtry,
-                    nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
-
-print(rdf)
-plot(rdf, main = NULL)
-
-RRF <- RRF(returns ~ ., data = data_clean[, -c(2, 18, 19, 28)], ntree = valntree, mtry = valmtry,
+RRF <- RRF(returns ~ ., data = data_clean[,-c(2, 4, 18, 19, 28)], ntree = valntree, mtry = valmtry,
            nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
 
 print(RRF)
 varImpPlot(RRF, type = 2, main = NULL)
 
-# RF on 12 most important variables
-x_RF <- data_clean[, c(18, 19, 6, 1, 2, 7, 24, 15, 17, 11, 4, 20)]
-y_RF <- data_clean[, 27]
+# Random Forest without b.m
+px <- ncol(data) - 1
+valntree <- 1000
+valmtry <- 4
+valnodesize <- 5
 
-tune_RF <- tuneRF(x_RF, y_RF, ntreeTry = 100, mtryStart = 1, stepFactor = 2, improve = 0.05)
+rdf <- randomForest(returns ~ ., data = data_clean[,-c(2, 4, 7, 18, 19, 28)], ntree = valntree, mtry = valmtry,
+                    nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
 
-valmtry <- 8
+plot(rdf, main = NULL)
 
-select_rdf <- randomForest(returns ~ CRSP_SPvw + CRSP_SPvwx + E12 + D12 + D.P + b.m + dfr + ltr + svar + EP + lty,
-                           data = data_clean[, 1 : 27], ntree = valntree, mtry = valmtry,
-                           nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
+tune_RF <- tuneRF(x, y, data = data_clean[,-c(2, 4, 7, 18, 19, 28)], ntreeTry = 300, mtryStart = 1, stepFactor = 2, improve = 0.05)
 
-print(select_rdf)
-plot(select_rdf, main = NULL)
+valntree <- 300
+valmtry <- 16
 
-# Pre-screening for GETS modelling
+rdf <- randomForest(returns ~ ., data = data_clean[,-c(2, 4, 7, 18, 19, 28)], ntree = valntree, mtry = valmtry,
+                    nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
+
+RRF <- RRF(returns ~ ., data = data_clean[,-c(2, 7, 4, 18, 19, 28)], ntree = valntree, mtry = valmtry,
+           nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
+
+varImpPlot(RRF, type = 2, main = NULL)
+
+# SIS Pre-screening for GETS modelling
 sis <- SIS(x, y, family = 'gaussian', penalty = 'lasso', tune = 'cv', nfolds = 10, nsis = 26)
 indices <- sis$sis.ix0
 show(indices)
