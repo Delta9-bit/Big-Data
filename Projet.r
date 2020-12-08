@@ -415,3 +415,36 @@ bptest(reg_RF)
 VIF(reg_RF)
 
 plot(data_clean$EP,data_clean$returns)
+
+# CumMSE
+
+Pred_Resid <- data.frame(matrix(nrow = length(previsions2[, 5])))
+Spread <- data.frame(matrix(nrow = length(previsions2[, 5])))
+
+Pred_Resid$SCAD <- previsions2[, 5]
+Pred_Resid$aSCAD <- previsions2[, 8]
+Pred_Resid$MSaSCAD <- previsions2[, 10]
+Pred_Resid$GETS <- previsions2[, 12]
+Pred_Resid$MSaEN <- previsions2[, 11]
+
+Pred_Resid <- Pred_Resid[, -1]
+
+i <- 1
+
+for (i in 1 : 5){
+  print(i)
+  Spread[i] <- cumsum((Pred_Resid[, 1]) - (Pred_Resid[, i]))
+}
+
+Spread$index <- seq(1 : 195)
+
+colnames(Spread) <- c('SCAD', 'aSCAD', 'MSaSCAD', 'GETS', 'MSaEN')
+
+ggplot(data = Spread, aes(x = index))+
+  geom_line(aes(y = SCAD, col = 'SCAD'))+
+  geom_line(aes(y = aSCAD, col = 'aSCAD'))+
+  geom_line(aes(y = MSaSCAD, col = 'MSaSCAD'))+
+  geom_line(aes(y = GETS, col = 'GETS'))+
+  geom_line(aes(y = MSaEN, col = 'MSaEN'))+
+  ylab('cumMSE')+
+  theme_minimal()
