@@ -23,8 +23,9 @@ library(rbridge)
 library(RRF)
 library(regclass)
 
-setwd("C:/Users/Lucas/Desktop/Cours/Big Data")
-getwd()
+setwd("C:/Users/Thiti/Desktop/M2 EKAP/S1/Econometrie big data/US stock returns-20201106")
+#load("big_data.RData")
+
 data = data.frame(read_excel('data.xlsx')[1 : 980,])
 
 summary(data)
@@ -38,13 +39,18 @@ data <- data[- 1, ]
 
 data$returns <- y
 
+# S&P 500 index plot
+
 ggplot(mapping = aes(x = date, y = Index), data)+
   geom_line(col = 'steelblue')+
   theme_minimal()
 
+# S&P 500 returns plot
 ggplot(mapping = aes(x = date, y = returns), data)+
   geom_line(col = 'steelblue')+
   theme_minimal()
+
+############## STATIONARITY - OUTLIERS DETECTION - DESCRIPTIVES STATS ##############
 
 # Loop for stationarity tests
 
@@ -80,6 +86,17 @@ stat.tests <- function(data){
   }
 }
 
+#Raw series in level  
+
+for (i in 1 : 27){
+  print(ggplot(mapping = aes(x = date, y = data[, i]), data)+
+          geom_line(aes(x = date, y = data[, i]), data = data, col = 'steelblue')+
+          theme_minimal()+
+          ggtitle(names(data[i]))+
+          ylab(names(data[i]))+
+          xlab('time'))
+}
+
 # Checking for stationarity
 
 stat.tests(data)
@@ -88,7 +105,7 @@ stat.tests(data)
 
 data_clean = var_non_stat
 
-for (i in 1 : 29){
+for (i in 3 : 29){
   y=ts(var_non_stat[, i])
   clean=Return.clean(y, method = "boudt")
   clean=ts(clean)
@@ -111,16 +128,19 @@ for (i in 2 : 29){
           xlab('time'))
 }
 
+
 # Desc. Statistics
 
 data_clean <- data_clean[, -c(1, 2)]
 
-for(i in 1:28){
+for(i in 1:27){
   print(names(data_clean[i]))
   print(FinTS.stats(data_clean[, i]))
 }
 
 ybreaks <- seq(0,50,5)
+
+# Distribution of returns compared to normal distribution
 
 ggplot(mapping = aes(x = returns), data_clean)+
   geom_density(fill = 'steelblue')+
@@ -133,22 +153,16 @@ ggplot(mapping = aes(x = returns), data_clean)+
 cor_comp <- cor(data_clean[, 1 : 27], use = 'complete.obs', method = c("spearman"))
 corrplot(cor_comp, method = 'circle', type = 'upper', tl.col = "black")
 
-#we pull out from de data set CRSP et D.P which are too much correlate with returns
+# we pull out from de data set CRSP et D.P and EP which are too much correlate with returns, and have a 
+# potential bias of endogeneity with returns
 
 # X and Y in matrix form
-
-x <- as.matrix(scale(data_clean[, - c(2, 4, 18, 19, 27, 28)], center = TRUE, scale = TRUE)) #regressors CRSP and DP are equal to Y
+x <- as.matrix(scale(data_clean[, - c(2, 4, 18, 19, 27, 28)], center = TRUE, scale = TRUE))
 y <- as.matrix(scale(data_clean[, 27], center = TRUE, scale = TRUE)) #Us stock returns
 y <- as.numeric(y)
 
-#Definition of a train set and a test set
-#test <- x[783:977,]
-#y_test <- y[783:977]
+############## Variable Selection ############
 
-#x <- x[1:782,]
-#y <- y[1:782]
-
-#============== Variable Selection ===============
 set.seed(123)
 # Ridge regression
 
@@ -206,6 +220,7 @@ alasso <- cv.glmnet(x, y, alpha = 1, penalty.factors = weights, nfolds = 10)
 # Fit w/ weights & opt lambda
 plot(alasso)
 best_lambda <- alasso$lambda.min
+best_lambda
 opt_alasso <- cv.glmnet(x, y, alpha = 1, lambda = lambda, penalty.factors = weights, nfolds = 10)
 # Exctracting coeffs
 which(! coef(opt_alasso) == 0, arr.ind = TRUE)
@@ -220,6 +235,7 @@ search <- foreach(i = a, .combine = rbind) %dopar% {
 }
 best_params <- search[search$cvm == min(search$cvm), ]
 best_lambda <- best_params$lambda.1se
+best_lambda
 # Fit w/ best lambda & alpha
 opt_En <- glmnet(x, y, lambda = best_lambda, standardize = FALSE, alpha = best_params$alpha)
 # Exctracting coeffs
@@ -276,60 +292,41 @@ y_ <- c(y, rep(0, p))
 wfLASSO <- cv.glmnet(x_, y_)
 which(! coef(wfLASSO) == 0, arr.ind = TRUE)
 
-# Random forest
+# RF
 
-#fit.control <- trainControl(method = 'repeatedcv', number = 5, repeats = 10,
-#                            search = 'grid')
-
-#tune.mtry <- expand.grid(.mtry = (14 : 16))
-
-#rdf_grid <- train(returns ~ ., data = data_clean[, 1 : 27], method = 'rf', metric = 'RMSE',
-#                  tuneGrid = tune.mtry, trControl = fit.control)
-
-##print(rdf_grid)
-#plot(rdf_grid)
-
-#varImportance <- varImp(rdf_grid)
-#plot(varImportance)
-
-#, - c(2, 18, 19, 27, 28)]
-x_RF <- data_clean[, - c(2, 18, 19, 27, 28)]
-y_RF <- data_clean[, 27]
+data_clean=data_clean[, - c(2, 4, 18, 19, 28)] # We remove variables correlated with returns
 
 px <- ncol(data) - 1
 valntree <- 200
 valmtry <- 16
 valnodesize <- 20
 
-rdf <- randomForest(returns ~ ., data = data_clean[,- c(2, 18, 19, 28)], ntree = valntree, mtry = valmtry,
-                    nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
-
-plot(rdf, main = NULL)
-
-tune_RF <- tuneRF(x_RF, y_RF, data = data_clean[,-c(2, 18, 19, 28)], ntreeTry = 100, mtryStart = 1, stepFactor = 2, improve = 0.05)
-
-rdf <- randomForest(returns ~ ., data = data_clean[, -c(2, 18, 19, 28)], ntree = valntree, mtry = valmtry,
+rdf <- randomForest(returns ~ ., data = data_clean, ntree = valntree, mtry = valmtry,
                     nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
 
 print(rdf)
 plot(rdf, main = NULL)
 
-RRF <- RRF(returns ~ ., data = data_clean[, -c(2, 18, 19, 28)], ntree = valntree, mtry = valmtry,
+
+RRF <- RRF(returns ~ ., data = data_clean, ntree = valntree, mtry = valmtry,
            nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
 
 print(RRF)
 varImpPlot(RRF, type = 2, main = NULL)
 
-# RF on 12 most important variables
-x_RF <- data_clean[, c(18, 19, 6, 1, 2, 7, 24, 15, 17, 11, 4, 20)]
-y_RF <- data_clean[, 27]
+# We repeat the RF without b.m to change the scale of war importance
 
-tune_RF <- tuneRF(x_RF, y_RF, ntreeTry = 100, mtryStart = 1, stepFactor = 2, improve = 0.05)
+RRF <- RRF(returns ~ .-b.m, data = data_clean, ntree = valntree, mtry = valmtry,
+           nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
 
+print(RRF)
+varImpPlot(RRF, type = 2, main = NULL)
+
+# RF on 10 most important variables
 valmtry <- 8
 
-select_rdf <- randomForest(returns ~ CRSP_SPvw + CRSP_SPvwx + E12 + D12 + D.P + b.m + dfr + ltr + svar + EP + lty,
-                           data = data_clean[, 1 : 27], ntree = valntree, mtry = valmtry,
+select_rdf <- randomForest(returns ~ b.m+svar+E12+ntis+BAA+DY+epu+dfr,
+                           data = data_clean, ntree = valntree, mtry = valmtry,
                            nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
 
 print(select_rdf)
@@ -341,11 +338,10 @@ indices <- sis$sis.ix0
 show(indices)
 
 # remove unused variables
-x2 <- x[, c(4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 20, 21, 22)]
+x2 <- x[, c(3,4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 18, 20, 21, 22)]
 
 corrplot(cor(x2), type = 'upper')
-
-x2 <- x[, - c(6, 12)]
+x2 <- x[, - c(6,12)]
         
 # GETS modelling 
 mX <- as.matrix(x2)
@@ -359,126 +355,13 @@ gets <- getsm(ARX, arch.LjungB = NULL)
 gets
 
 
-# OLS with selected variables
+############## Fit OLS with selected wariables ##########
 
+#builind lag on returns 
 lag_y <- data_clean$returns
-lag_y <- lag_y[- 1]
-data_clean=data_clean[,-c(2, 18, 19, 28)]
-data_clean <- data_clean[- 978,]
+data_clean <- data_clean[- 1,]
+lag_y <- lag_y[- 978]
 data_clean$lag <- lag_y
-
-summary(lm(returns~svar+b.m+EP+E12+D12+DY,data=data_clean))
-
-summary(lm(returns~svar+b.m+EP+E12+D12+DY,data=data_clean))#potentiel pb de DE et EP DP
-
-cor <- cor(data_clean[,c(1:6,17)])
-corrplot(cor)
-
-reg_LASSO=lm(returns~D12+DY+DE+E12+AAA+b.m+lty+infl+ntis+IP+gap+dfr+dfy+epu+svar+tms+lag_y,data=data_clean)
-summary(reg_LASSO)
-shapiro.test(residuals(reg_LASSO))
-jarque.bera.test(residuals(reg_LASSO))
-bptest(reg_LASSO)
-VIF(reg_LASSO)
-
-plot(residuals(reg_LASSO))
-mean(residuals(reg_LASSO))
-sd(residuals(reg_LASSO))
-
-ggplot(mapping = aes(x = returns), data_clean)+
-  geom_density(fill = 'steelblue')+
-  stat_function(fun = dnorm, args = list(mean = 0.0, sd = 0.0094), color = 'red')+
-  scale_x_continuous(limits = c(-0.3, 0.3))+
-  theme_minimal()
-
-reg_Ridge=lm(returns~.,data=data_clean)
-summary(reg_Ridge)
-shapiro.test(residuals(reg_Ridge))
-jarque.bera.test(residuals(reg_Ridge))
-bptest(reg_Ridge)
-VIF(reg_Ridge)
-
-reg_Bridge=lm(returns~lag_y+D12+DY+DE+E12+b.m+lty+infl+svar,data=data_clean)
-summary(reg_Bridge)
-shapiro.test(residuals(reg_Bridge))
-jarque.bera.test(residuals(reg_Bridge))
-bptest(reg_Bridge)
-VIF(reg_Bridge)
-
-#EN = aLASSO = WF = aEN = Ms-aEN = Ms-aSCAD
-#SCAD = aSCAD
-
-reg_EN=lm(returns~lag_y+D12+DY+EP+DE+E12+b.m,data=data_clean)
-summary(reg_EN)
-shapiro.test(residuals(reg_EN))
-jarque.bera.test(residuals(reg_EN))
-bptest(reg_EN)
-VIF(reg_EN)
-
-reg_SCAD=lm(returns~lag_y+D12+DY+EP+DE+E12+b.m+svar,data=data_clean)
-summary(reg_SCAD)
-shapiro.test(residuals(reg_SCAD))
-jarque.bera.test(residuals(reg_SCAD))
-bptest(reg_SCAD)
-VIF(reg_SCAD)
-
-reg_RF=lm(returns~lag_y,data=data_clean)
-summary(reg_RF)
-shapiro.test(residuals(reg_RF))
-jarque.bera.test(residuals(reg_RF))
-bptest(reg_RF)
-VIF(reg_RF)
-
-plot(data_clean$EP,data_clean$returns)
-
-
-#Boucle pour prévisions recursif
-
-x_test <- x[783:978,]
-y_test <- y[783:978]
-
-x <- x[1:782,]
-y <- y[1:782]
-
-978-783
-
-estim <- 978
-
-
-#Previsions récurcive
-
-for (i in 1:h)
-{
-  X <- data_clean
-  OLS = lm(returns~D12+DY+DE+b.m,data=X[1:(781+i),]) 
-  forc = predict(OLS,newdata=X[782+i,])
-  prev[i,1] <- forc
-  prev[i,1] <- rbind(forc)
-  i=i+i
-}
-
-#Rolling forecast
-
-for (i in 1:h)
-{
-  X <- data_clean
-  OLS = lm(returns~lag+D12+DY+DE+b.m,data=X[i:(781+i),]) 
-  forc = predict(OLS,newdata=X[782+i,])
-  prev[i,1] <- forc
-  prev[i,1] <- rbind(forc)
-  i=i+i
-}
-
-
-prev
-summary(OLS)
-shapiro.test(residuals(OLS))
-
-plot(data_clean$returns[783:978],type="l",col="black")
-lines(prev,type="l",col="red")
-
-plot(data_clean$returns[783:978],prev,pch=20)
-abline(0,1,col="red")
 
 #lm Lasso D12 DY DE E12 b.m lty ntis infl svar IP gap tms dfr dfy epu
 #lm ridge all
@@ -493,23 +376,16 @@ abline(0,1,col="red")
 #lm Ms-aSCAD E12 b.m lty svar dfr
 
 library(regclass)
-########## Fit OLS with selected wariables ##########
 
-OLS_LASSO=lm(returns~D12+DY+DE+E12+b.m+lty+ntis+infl+svar+IP+gap+tms+dfr+dfy+epu+lag, data=data_clean)
+
+OLS_LASSO=lm(returns~D12+DY+DE+E12+b.m+lty+ntis+infl+svar+IP+gap+tms+dfr+dfy+epu+lag+AAA, data=data_clean)
 summary(OLS_LASSO)
 shapiro.test(residuals(OLS_LASSO))
 jarque.bera.test(residuals(OLS_LASSO))
 bptest(OLS_LASSO)
-VIF(OLS_LASSO)
+VIF(OLS_LASSO) #Multicolinéarité
 
 OLS_Ridge=lm(returns~., data=data_clean)
-summary(OLS_Ridge)
-shapiro.test(residuals(OLS_Ridge))
-jarque.bera.test(residuals(OLS_Ridge))
-bptest(OLS_Ridge)
-VIF(OLS_Ridge)#modèle très colinéaire
-
-OLS_Ridge=lm(returns~., data=data_clean[,-c(1:2)])
 summary(OLS_Ridge)
 shapiro.test(residuals(OLS_Ridge))
 jarque.bera.test(residuals(OLS_Ridge))
@@ -546,7 +422,7 @@ bptest(OLS_aLASSO)
 VIF(OLS_aLASSO)
 
 
-OLS_WF=lm(returns~b.m+svar+dfr+ lag, data=data_clean)
+OLS_WF=lm(returns~E12+b.m+svar+dfr+ lag, data=data_clean)
 summary(OLS_WF)
 shapiro.test(residuals(OLS_WF))
 jarque.bera.test(residuals(OLS_WF))
@@ -596,6 +472,7 @@ jarque.bera.test(residuals(OLS_RF))
 bptest(OLS_RF)
 VIF(OLS_RF)
 
+
 OLS_RF_Pruned=lm(returns~b.m+svar+ntis+dfr+DY+BAA+epu+E12 + lag, data=data_clean)
 summary(OLS_RF_Pruned)
 shapiro.test(residuals(OLS_RF_Pruned))
@@ -603,13 +480,14 @@ jarque.bera.test(residuals(OLS_RF_Pruned))
 bptest(OLS_RF_Pruned)
 VIF(OLS_RF_Pruned)
 
-#================ FORECAST ================
+############## FORECAST ############## 
+
 RMSE=function(Y,Y_pred,X){
   Err=(Y-Y_pred)^2
   RMSE=sum(Err)/X
   print(RMSE)
   }
-# Recursive method
+#=============== Recursive method =============== 
 h <- 195
 prev <- matrix(nrow=h, ncol=1)
 for (i in 1:h){
@@ -628,7 +506,7 @@ RMSE(Y=data_clean$returns[783:977,],Y_pred=previsions$LASSO,X=length(prev))
 
 prev <- matrix(nrow=h, ncol=1)
 for (i in 1:h){
-  X <- data_clean[,-c(3)]
+  X <- data_clean
   OLS_Ridge = lm(returns~.-returns,data=X[1:(781+i),]) 
   forc = predict(OLS_Ridge,newdata=X[782+i,])
   prev[i,1] <- forc
@@ -698,7 +576,7 @@ RMSE(Y=data_clean$returns[783:977,],Y_pred=previsions$aLASSO,X=length(prev))
 prev <- matrix(nrow=h, ncol=1)
 for (i in 1:h){
   X <- data_clean
-  OLS_WF = lm(returns~b.m+svar+dfr+ lag,data=X[1:(781+i),]) 
+  OLS_WF = lm(returns~E12+b.m+svar+dfr+ lag,data=X[1:(781+i),]) 
   forc = predict(OLS_WF,newdata=X[782+i,])
   prev[i,1] <- forc
   prev[i,1] <- rbind(forc)
@@ -806,7 +684,7 @@ previsions$RF_Pruned=prev
 
 RMSE(Y=data_clean$returns[783:977,],Y_pred=previsions$RF_Pruned,X=length(prev))
 
-# Rolling method
+#=============== Rolling method ============== 
 
 h <- 195
 prev <- matrix(nrow=h, ncol=1)
@@ -823,7 +701,7 @@ colnames(previsions2)=c("LASSO")
 
 prev <- matrix(nrow=h, ncol=1)
 for (i in 1:h){
-  X <- data_clean[,-c(3)]
+  X <- data_clean
   OLS_Ridge = lm(returns~.-returns,data=X[i:(781+i),]) 
   forc = predict(OLS_Ridge,newdata=X[782+i,])
   prev[i,1] <- forc
@@ -879,7 +757,7 @@ previsions2$aLASSO=prev
 prev <- matrix(nrow=h, ncol=1)
 for (i in 1:h){
   X <- data_clean
-  OLS_WF = lm(returns~b.m+svar+dfr+ lag,data=X[i:(781+i),]) 
+  OLS_WF = lm(returns~E12+b.m+svar+dfr+ lag,data=X[i:(781+i),]) 
   forc = predict(OLS_WF,newdata=X[782+i,])
   prev[i,1] <- forc
   prev[i,1] <- rbind(forc)
@@ -970,19 +848,24 @@ for (i in 1:14){
   i=i+1
 }
 
+#=============== Model comparison ==================
 # MDM test
 library(multDM)
 #Selection des 5 meilleurs modèles 
 
-Pred= data.matrix(previsions2[,c(5,8,10:12)])
+
+library(multDM)
+Pred= data.matrix(previsions2[,c(5,6,8,10,12)])
 Pred=t(Pred)
-MDM.test(data_clean$returns[783:977,], Pred, q = 2,loss.type = "SE")
+MDM.test(data_clean$returns[783:977,], Pred, q = 1,loss.type = "SE")
+# the mult DM test tells us it exists a significant difference in term of forecastig accuracy bewteen all 5
+# best model
 
+#simple test to see which is the best one
 
-#simple test to see whch is the best one
 
 Error=matrix(nrow = h,ncol=5)
-Prev2=previsions2[,c(5,8,10:12)]
+Prev2=previsions2[,c(5,6,8,10,12)]
 for (i in 1:5){
   Error[,i]=data_clean$returns[783:977,]-Prev2[,i]
   i=i+1
@@ -990,22 +873,107 @@ for (i in 1:5){
 
 Error=as.data.frame(Error)
 colnames(Error)=colnames(Prev2)
+
+
 library(forecast)
 
 dm.test(Error$Ms_aSCAD,Error$SCAD,h=1,alternative=c("two.sided"))
 dm.test(Error$Ms_aSCAD,Error$aSCAD,h=1,alternative=c("two.sided"))
-dm.test(Error$Ms_aSCAD,Error$Ms_aEN,h=1,alternative=c("two.sided"))
 dm.test(Error$Ms_aSCAD,Error$GETS,h=1,alternative=c("two.sided"))
-
+dm.test(Error$Ms_aSCAD,Error$aLASSO,h=1,alternative=c("two.sided"))
 
 dm.test(Error$SCAD,Error$aSCAD,h=1,alternative=c("two.sided"))
 dm.test(Error$SCAD,Error$GETS,h=1,alternative=c("two.sided"))
-dm.test(Error$SCAD,Error$Ms_aEN,h=1,alternative=c("two.sided"))
-dm.test(Error$SCAD,Error$Ms_aSCAD,h=1,alternative=c("two.sided"))
+dm.test(Error$SCAD,Error$aLASSO,h=1,alternative=c("two.sided"))
 
-
-dm.test(Error$aSCAD,Error$Ms_aSCAD,h=1,alternative=c("two.sided"))
 dm.test(Error$aSCAD,Error$GETS,h=1,alternative=c("two.sided"))
-dm.test(Error$aSCAD,Error$Ms_aEN,h=1,alternative=c("two.sided"))
+dm.test(Error$aSCAD,Error$aLASSO,h=1,alternative=c("two.sided"))
 
-dm.test(Error$GETS,Error$Ms_aEN,h=1,alternative=c("two.sided"))
+dm.test(Error$GETS,Error$aLASSO,h=1,alternative=c("two.sided"))
+
+
+#Cum MSE
+y_test=data_clean$returns[783:977]
+Pred_Resid <- data.frame(matrix(nrow = length(previsions2[, 5])))
+Spread <- data.frame(matrix(nrow = length(previsions2[, 5])))
+
+Pred_Resid$SCAD <- (y_test - previsions2[, 5])^2
+Pred_Resid$aSCAD <- (y_test - previsions2[, 8])^2
+Pred_Resid$MSaSCAD <- (y_test - previsions2[, 10])^2
+Pred_Resid$GETS <- (y_test - previsions2[, 12])^2
+Pred_Resid$aLASSO <- (y_test - previsions2[, 6])^2
+
+Pred_Resid <- Pred_Resid[, -1]
+
+i <- 1
+
+for (i in 1 : 5){
+  print(i)
+  Spread[i] <- cumsum((Pred_Resid[, 1]) - (Pred_Resid[, i]))
+}
+
+colnames(Spread) <- c('SCAD', 'aSCAD', 'MSaSCAD', 'GETS', 'MSaEN')
+
+Spread$index <- seq(1 : 195)
+
+ggplot(data = Spread, aes(x = index))+
+  geom_line(aes(y = SCAD, col = 'SCAD'))+
+  geom_line(aes(y = aSCAD, col = 'aSCAD'))+
+  geom_line(aes(y = MSaSCAD, col = 'MSaSCAD'))+
+  geom_line(aes(y = GETS, col = 'GETS'))+
+  geom_line(aes(y = MSaEN, col = 'aLASSO'))+
+  ylab('cumMSE')+
+  theme_minimal()  
+
+# Plotting of forecasting S&P 500 with Ms-aSCAD OLS
+AND 
+ggplot(data = previsions2, aes(x = index))+
+  geom_line(aes(y = returns),col='steelblue')+
+  geom_line(aes(y = Ms_aSCAD),col='red')+
+  ylab('S&P 500 returns')+
+  theme_minimal()
+
+# Best model vs RF
+valntree <- 200
+valmtry <- 8
+valnodesize <- 20
+
+select_rdf <- randomForest(returns ~ b.m+svar+ntis+dfr+DY+BAA+epu+E12 + lag,
+                           data =data_clean, ntree = valntree, mtry = valmtry,
+                           nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
+
+print(select_rdf)
+#Mean of squared residuals: 0.000425
+# % Var explained: 76.35
+
+prev <- matrix(nrow=h, ncol=1)
+for (i in 1:h){
+  X <- data_clean
+  pruned_rdf = randomForest(returns ~ b.m+svar+ntis+dfr+DY+BAA+epu+E12 + lag,
+                            data = X[i:(781+i),], ntree = valntree, mtry = valmtry,
+                            nodesize = valnodesize, important = TRUE, proximity = TRUE, nPerm = 1)
+  forc = predict(select_rdf,newdata=X[782+i,])
+  prev[i,1] <- forc
+  i=i+i
+}
+previsions2$RF_Model=prev
+RMSE(data_clean$returns[783:977],previsions2$RF_Model,195)
+previsions2$returns=data_clean$returns[783:977]
+previsions2$index=c(1:195)
+
+# univariate DM test between RF and Ms-aSCAD
+
+Error$RF_Pruned=previsions2$returns-previsions2$RF_Model
+
+dm.test(Error$RF_Pruned,Error$Ms_aSCAD,h=1,alternative=c("two.sided"))
+#p-value <0.001
+
+#Plotting of returns and RF forecasting
+ggplot(data = previsions2, aes(x = index))+
+  geom_line(aes(y = returns),col='steelblue')+
+  geom_line(aes(y = RF_Model),col='red')+
+  ylab('S&P 500 returns')+
+  theme_minimal()
+
+
+
